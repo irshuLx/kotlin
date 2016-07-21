@@ -24,6 +24,7 @@ import com.intellij.debugger.engine.DebugProcessImpl
 import com.intellij.debugger.engine.PositionManagerEx
 import com.intellij.debugger.engine.evaluation.EvaluationContext
 import com.intellij.debugger.jdi.StackFrameProxyImpl
+import com.intellij.debugger.jdi.VirtualMachineProxyImpl
 import com.intellij.debugger.requests.ClassPrepareRequestor
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.psi.PsiFile
@@ -43,6 +44,8 @@ import org.jetbrains.kotlin.idea.debugger.breakpoints.getLambdasAtLineIfAny
 import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinCodeFragmentFactory
 import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches
 import org.jetbrains.kotlin.idea.decompiler.classFile.KtClsFile
+import org.jetbrains.kotlin.idea.filters.inlineLineAndFileByPosition
+import org.jetbrains.kotlin.idea.refactoring.getLineCount
 import org.jetbrains.kotlin.idea.refactoring.getLineStartOffset
 import org.jetbrains.kotlin.idea.stubindex.KotlinSourceFilterScope
 import org.jetbrains.kotlin.idea.util.ProjectRootsUtil
@@ -77,9 +80,7 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
     }
 
     override fun getSourcePosition(location: Location?): SourcePosition? {
-        if (location == null) {
-            throw NoDataException.INSTANCE
-        }
+        if (location == null) throw NoDataException.INSTANCE
 
         val psiFile = getPsiFileByLocation(location)
         if (psiFile == null) {
@@ -122,6 +123,17 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
         if (property != null) {
             return SourcePosition.createFromElement(property)
         }
+
+        if (lineNumber > psiFile.getLineCount() && myDebugProcess.isDexDebug()) {
+            val inlinePosition = inlineLineAndFileByPosition(
+                    location.lineNumber(), FqName(location.declaringType().name()), location.sourceName(),
+                    myDebugProcess.project, GlobalSearchScope.allScope(myDebugProcess.project))
+
+            if (inlinePosition != null) {
+                return SourcePosition.createFromLine(inlinePosition.first, inlinePosition.second)
+            }
+        }
+
         return SourcePosition.createFromLine(psiFile, lineNumber)
     }
 
@@ -181,7 +193,6 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
         catch (e: InternalError) {
             return null
         }
-
 
         val referenceInternalName: String
         try {
@@ -281,3 +292,9 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
 inline fun <U, V> U.readAction(crossinline f: (U) -> V): V {
     return runReadAction { f(this) }
 }
+
+@Volatile var emulateDexDebugInTests: Boolean = false
+
+private fun DebugProcess.isDexDebug() =
+        (emulateDexDebugInTests && ApplicationManager.getApplication ().isUnitTestMode) ||
+        (this.virtualMachineProxy as? VirtualMachineProxyImpl)?.virtualMachine?.name() == "Dalvik" // TODO: check other machine name
