@@ -44,6 +44,7 @@ import org.jetbrains.kotlin.idea.debugger.breakpoints.getLambdasAtLineIfAny
 import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinCodeFragmentFactory
 import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches
 import org.jetbrains.kotlin.idea.decompiler.classFile.KtClsFile
+import org.jetbrains.kotlin.idea.filters.destinationInlineLinePosition
 import org.jetbrains.kotlin.idea.filters.inlineLineAndFileByPosition
 import org.jetbrains.kotlin.idea.refactoring.getLineCount
 import org.jetbrains.kotlin.idea.refactoring.getLineStartOffset
@@ -258,11 +259,23 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
         }
         try {
             val line = position.line + 1
+
             val locations = if (myDebugProcess.virtualMachineProxy.versionHigher("1.4"))
                 type.locationsOfLine(KOTLIN_STRATA_NAME, null, line).filter { it.sourceName(KOTLIN_STRATA_NAME) == position.file.name }
             else
                 type.locationsOfLine(line)
-            if (locations == null || locations.isEmpty()) throw NoDataException.INSTANCE
+
+            if (myDebugProcess.isDexDebug()) {
+                val inlineLocations = noStrataLocationsOfLineForInlineFunctions(type, position, myDebugProcess.searchScope)
+                if (!inlineLocations.isEmpty()) {
+                    return inlineLocations
+                }
+            }
+
+            if (locations == null || locations.isEmpty()) {
+                throw NoDataException.INSTANCE
+            }
+
             return locations
         }
         catch (e: AbsentInformationException) {
