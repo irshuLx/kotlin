@@ -331,7 +331,7 @@ fun main(args: Array<String>) {
         }
 
         testClass<AbstractCompilerLightClassTest>() {
-            model("asJava/lightClasses")
+            model("asJava/lightClasses", excludeDirs = listOf("local"))
         }
 
         testClass<AbstractTypeBindingTest>() {
@@ -853,7 +853,7 @@ fun main(args: Array<String>) {
         }
 
         testClass<AbstractIdeCompiledLightClassTest> {
-            model("asJava/lightClasses", pattern = """^([^\.]+)\.kt$""")
+            model("asJava/lightClasses", excludeDirs = listOf("local"), pattern = """^([^\.]+)\.kt$""")
         }
     }
 
