@@ -20,9 +20,10 @@ import com.intellij.codeInsight.intention.HighPriorityAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.util.TextRange
 import org.jetbrains.kotlin.idea.intentions.*
+import org.jetbrains.kotlin.lexer.KtSingleValueToken
 import org.jetbrains.kotlin.lexer.KtTokens
-import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.resolve.calls.model.ArgumentMatch
 import org.jetbrains.kotlin.resolve.calls.model.isReallySuccess
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
@@ -45,24 +46,35 @@ class ReplaceCallWithBinaryOperatorIntention : SelfTargetingRangeIntention<KtDot
 
         if (!element.isReceiverExpressionWithValue()) return null
 
-        text = "Replace with '$operation' operator"
+        text = "Replace with '${operation.value}' operator"
         return calleeExpression.textRange
     }
 
     override fun applyTo(element: KtDotQualifiedExpression, editor: Editor?) {
         val callExpression = element.callExpression ?: return
-        val operation = operation(callExpression.calleeExpression as? KtSimpleNameExpression ?: return)!!
-        val argument = callExpression.valueArguments.single().getArgumentExpression()!!
+        val operation = operation(callExpression.calleeExpression as? KtSimpleNameExpression ?: return) ?: return
+        val argument = callExpression.valueArguments.single().getArgumentExpression() ?: return
         val receiver = element.receiverExpression
 
-        element.replace(KtPsiFactory(element).createExpressionByPattern("$0 $operation $1", receiver, argument))
+        if (operation == KtTokens.EQEQ) {
+            val parent = element.getStrictParentOfType<KtPrefixExpression>()
+            if (parent != null && parent.operationToken == KtTokens.EXCL
+                && parent.baseExpression?.let { KtPsiUtil.safeDeparenthesize(it) } === element) {
+                val newExpression = KtPsiFactory(element).createExpressionByPattern("$0 != $1", receiver, argument)
+                parent.replace(newExpression)
+                return
+            }
+        }
+
+        val newExpression = KtPsiFactory(element).createExpressionByPattern("$0 ${operation.value} $1", receiver, argument)
+        element.replace(newExpression)
     }
 
-    private fun operation(calleeExpression: KtSimpleNameExpression): String? {
+    private fun operation(calleeExpression: KtSimpleNameExpression): KtSingleValueToken? {
         val identifier = calleeExpression.getReferencedNameAsName()
         if (identifier == OperatorNameConventions.EQUALS) {
-            return KtTokens.EQEQ.value
+            return KtTokens.EQEQ
         }
-        return OperatorConventions.BINARY_OPERATION_NAMES.inverse()[identifier]?.value
+        return OperatorConventions.BINARY_OPERATION_NAMES.inverse()[identifier]
     }
 }
