@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.idea.core.script
 
+import com.intellij.execution.configurations.CommandLineTokenizer
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.project.Project
 import org.gradle.tooling.ProjectConnection
@@ -42,6 +43,15 @@ class GradleScriptTemplateProvider(project: Project): ScriptTemplateProvider {
         }
     }
 
+    private val gradleJvmOptions: List<String> by lazy {
+        gradleExeSettings?.let { settings ->
+            CommandLineTokenizer(settings.daemonVmOptions).toList()
+                    .mapNotNull { it?.let { it as? String } }
+                    .filterNot { it.isBlank() }
+                    .distinct()
+        } ?: emptyList()
+    }
+
     override val id: String = "Gradle"
     override val version: Int = 1
     override val isValid: Boolean get() = gradleExeSettings?.gradleHome != null
@@ -54,12 +64,15 @@ class GradleScriptTemplateProvider(project: Project): ScriptTemplateProvider {
                     ?.map { it.canonicalPath }
                 ?: emptyList()
     }
-    override val environment: Map<String, Any?>? by lazy { mapOf(
+    override val environment: Map<String, Any?>? by lazy {
+
+        mapOf(
             "gradleHome" to gradleExeSettings?.gradleHome?.let { File(it) },
             "projectRoot" to (project.basePath ?: project.baseDir.canonicalPath)?.let { File(it) },
-            "projectActionExecutor" to { action: (ProjectConnection) -> Unit ->
+            "gradleWithConnection" to { action: (ProjectConnection) -> Unit ->
                 GradleExecutionHelper().execute(project.basePath!!, null) { action(it) } },
-            "gradleJavaHome" to gradleExeSettings?.javaHome)
+            "gradleJavaHome" to gradleExeSettings?.javaHome,
+            "gradleJvmOptions" to gradleJvmOptions)
     }
 
     companion object {
