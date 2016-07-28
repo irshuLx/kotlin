@@ -71,7 +71,12 @@ class WrapWithSafeLetCallFix(
 
             if (!isNullabilityMismatch(expected = typeMismatch.a, actual = typeMismatch.b)) return null
 
-            return WrapWithSafeLetCallFix(call, typeMismatch.psiElement)
+            var qualifiedParent = call.parent as? KtQualifiedExpression
+            while (qualifiedParent?.parent is KtQualifiedExpression) {
+                qualifiedParent = qualifiedParent?.parent as? KtQualifiedExpression
+            }
+
+            return WrapWithSafeLetCallFix(qualifiedParent ?: call, typeMismatch.psiElement)
         }
     }
 }
