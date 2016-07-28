@@ -25,6 +25,7 @@ import org.jetbrains.kotlin.idea.core.KotlinNameSuggester
 import org.jetbrains.kotlin.idea.core.NewDeclarationNameValidator
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
+import org.jetbrains.kotlin.psi.psiUtil.rootQualifiedOrSimpleCall
 import org.jetbrains.kotlin.types.TypeUtils
 import org.jetbrains.kotlin.types.typeUtil.isNullabilityMismatch
 import org.jetbrains.kotlin.types.typeUtil.isSubtypeOf
@@ -71,12 +72,7 @@ class WrapWithSafeLetCallFix(
 
             if (!isNullabilityMismatch(expected = typeMismatch.a, actual = typeMismatch.b)) return null
 
-            var qualifiedParent = call.parent as? KtQualifiedExpression
-            while (qualifiedParent?.parent is KtQualifiedExpression) {
-                qualifiedParent = qualifiedParent?.parent as? KtQualifiedExpression
-            }
-
-            return WrapWithSafeLetCallFix(qualifiedParent ?: call, typeMismatch.psiElement)
+            return WrapWithSafeLetCallFix(call.rootQualifiedOrSimpleCall(), typeMismatch.psiElement)
         }
     }
 }

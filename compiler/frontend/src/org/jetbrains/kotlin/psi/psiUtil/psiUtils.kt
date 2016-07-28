@@ -22,8 +22,7 @@ import com.intellij.psi.search.PsiSearchScopeUtil
 import com.intellij.psi.search.SearchScope
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.diagnostics.DiagnosticUtils
-import org.jetbrains.kotlin.psi.KtFile
-import org.jetbrains.kotlin.psi.KtFileAnnotationList
+import org.jetbrains.kotlin.psi.*
 import java.util.*
 
 // NOTE: in this file we collect only LANGUAGE INDEPENDENT methods working with PSI and not modifying it
@@ -361,3 +360,10 @@ fun <E : PsiElement> E.createSmartPointer(): SmartPsiElementPointer<E> =
 
 fun PsiElement.before(element: PsiElement) = textRange.endOffset <= element.textRange.startOffset
 
+fun KtCallExpression.rootQualifiedOrSimpleCall(): KtExpression {
+    var qualifiedParent = parent as? KtQualifiedExpression
+    while (qualifiedParent?.parent is KtQualifiedExpression) {
+        qualifiedParent = qualifiedParent?.parent as? KtQualifiedExpression
+    }
+    return qualifiedParent ?: this
+}
