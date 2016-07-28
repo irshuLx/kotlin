@@ -19,6 +19,7 @@ package org.jetbrains.kotlin.idea.intentions.conventionNameCalls
 import com.intellij.codeInsight.intention.HighPriorityAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.util.TextRange
+import com.intellij.psi.tree.IElementType
 import org.jetbrains.kotlin.idea.intentions.*
 import org.jetbrains.kotlin.lexer.KtSingleValueToken
 import org.jetbrains.kotlin.lexer.KtTokens
@@ -34,6 +35,17 @@ class ReplaceCallWithBinaryOperatorIntention : SelfTargetingRangeIntention<KtDot
         KtDotQualifiedExpression::class.java,
         "Replace call with binary operator"
 ), HighPriorityAction {
+
+    private fun IElementType.inverted(): KtSingleValueToken? = when (this) {
+        KtTokens.LT -> KtTokens.GT
+        KtTokens.GT -> KtTokens.LT
+
+        KtTokens.GTEQ -> KtTokens.LTEQ
+        KtTokens.LTEQ -> KtTokens.GTEQ
+
+        else -> null
+    }
+
     override fun applicabilityRange(element: KtDotQualifiedExpression): TextRange? {
         val calleeExpression = element.callExpression?.calleeExpression as? KtSimpleNameExpression ?: return null
         val operation = operation(calleeExpression) ?: return null
@@ -56,25 +68,52 @@ class ReplaceCallWithBinaryOperatorIntention : SelfTargetingRangeIntention<KtDot
         val argument = callExpression.valueArguments.single().getArgumentExpression() ?: return
         val receiver = element.receiverExpression
 
-        if (operation == KtTokens.EQEQ) {
-            val parent = element.getStrictParentOfType<KtPrefixExpression>()
-            if (parent != null && parent.operationToken == KtTokens.EXCL
-                && parent.baseExpression?.let { KtPsiUtil.safeDeparenthesize(it) } === element) {
-                val newExpression = KtPsiFactory(element).createExpressionByPattern("$0 != $1", receiver, argument)
+        val factory = KtPsiFactory(element)
+        when (operation) {
+            KtTokens.EQEQ -> {
+                val parent = element.getStrictParentOfType<KtPrefixExpression>()
+                if (parent != null && parent.operationToken == KtTokens.EXCL
+                    && parent.baseExpression?.let { KtPsiUtil.safeDeparenthesize(it) } === element) {
+                    val newExpression = factory.createExpressionByPattern("$0 != $1", receiver, argument)
+                    parent.replace(newExpression)
+                    return
+                }
+            }
+            in OperatorConventions.COMPARISON_OPERATIONS -> {
+                val parent = element.parent as? KtBinaryExpression ?: return
+                val newExpression = factory.createExpressionByPattern("$0 ${operation.value} $1", receiver, argument)
                 parent.replace(newExpression)
                 return
             }
         }
 
-        val newExpression = KtPsiFactory(element).createExpressionByPattern("$0 ${operation.value} $1", receiver, argument)
+        val newExpression = factory.createExpressionByPattern("$0 ${operation.value} $1", receiver, argument)
         element.replace(newExpression)
     }
 
     private fun operation(calleeExpression: KtSimpleNameExpression): KtSingleValueToken? {
         val identifier = calleeExpression.getReferencedNameAsName()
-        if (identifier == OperatorNameConventions.EQUALS) {
-            return KtTokens.EQEQ
+        return when (identifier) {
+            OperatorNameConventions.EQUALS -> KtTokens.EQEQ
+            OperatorNameConventions.COMPARE_TO -> {
+                // callee -> call -> DotQualified -> Binary
+                val dotQualified = calleeExpression.parent?.parent
+                val parent = dotQualified?.parent as? KtBinaryExpression ?: return null
+                val notZero = when {
+                    parent.right?.text == "0" -> parent.left
+                    parent.left?.text == "0" -> parent.right
+                    else -> return null
+                }
+                if (notZero != dotQualified) return null
+                val token = parent.operationToken as? KtSingleValueToken ?: return null
+                if (token in OperatorConventions.COMPARISON_OPERATIONS) {
+                    if (notZero == parent.left) token else token.inverted()
+                }
+                else {
+                    null
+                }
+            }
+            else -> OperatorConventions.BINARY_OPERATION_NAMES.inverse()[identifier]
         }
-        return OperatorConventions.BINARY_OPERATION_NAMES.inverse()[identifier]
     }
 }
