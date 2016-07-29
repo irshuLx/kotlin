@@ -16,6 +16,8 @@
 
 package org.jetbrains.kotlin.idea.debugger;
 
+import com.google.common.collect.Lists;
+import com.intellij.compiler.impl.CompilerUtil;
 import com.intellij.debugger.impl.DescriptorTestCase;
 import com.intellij.debugger.impl.OutputChecker;
 import com.intellij.execution.configurations.JavaParameters;
@@ -115,6 +117,9 @@ public abstract class KotlinDebuggerTestCase extends DescriptorTestCase {
 
         IdeaTestUtil.setModuleLanguageLevel(myModule, LanguageLevel.JDK_1_6);
 
+        String outputDirPath = getAppOutputPath();
+        File outDir = new File(outputDirPath);
+
         if (!IS_TINY_APP_COMPILED) {
             String modulePath = getTestAppPath();
 
@@ -136,6 +141,8 @@ public abstract class KotlinDebuggerTestCase extends DescriptorTestCase {
 
             IS_TINY_APP_COMPILED = true;
         }
+
+        CompilerUtil.refreshOutputDirectories(Lists.newArrayList(outDir), false);
 
         ApplicationManager.getApplication().runWriteAction(new Runnable() {
             @Override
